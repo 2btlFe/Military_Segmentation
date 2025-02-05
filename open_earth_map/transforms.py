@@ -4,7 +4,6 @@ import numpy as np
 import torchvision.transforms.functional as TF
 from torchvision.transforms import InterpolationMode
 
-
 class ToTensor:
     def __init__(self, classes):
         self.classes = classes

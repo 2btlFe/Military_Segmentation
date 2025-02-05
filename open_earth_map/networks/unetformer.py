@@ -447,6 +447,7 @@ class Decoder(nn.Module):
         x = self.b2(x)
         x = self.p1(x, res1)
         x = self.segmentation_head(x)
+        
         x = F.interpolate(x, size=(h, w), mode="bilinear", align_corners=False)
 
         return x

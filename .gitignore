@@ -132,3 +132,36 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+
+# Img file extensions
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+
+# Result Directory
+wandb/
+work_dir/
+show_dir/
+mask_visual/
+predictions/
+
+
+# pth file
+*.pth
+*.pkl
+
+
+# Etc
+*.xml
+OpenEarthMap
+line_thickness.py
+requirements.txt
+demo_training.py
+demo_testing.py
+skku_tiles/
+pics/
+combine_road_building.py

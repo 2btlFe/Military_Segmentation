@@ -68,6 +68,7 @@ def train_epoch(model, optimizer, criterion, dataloader, device="cpu"):
 
     model.to(device).train()
 
+
     iterator = tqdm(dataloader, desc="Train")
     for x, y, *_ in iterator:
         x = x.to(device).float()

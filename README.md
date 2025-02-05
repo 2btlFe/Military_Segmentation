@@ -36,20 +36,29 @@ OpenEarthMap is a benchmark dataset for global high-resolution land cover mappin
  -->
 Label data of OpenEarthMap are provided under the same license as the original RGB images, which varies with each source dataset. For more details, please see the attribution of source data [here](https://open-earth-map.org/attribution.html). Label data for regions where the original RGB images are in the public domain or where the license is not explicitly stated are licensed under a Creative [Commons Attribution-NonCommercial-ShareAlike 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) International License.
 
-### Note for xBD data
-The RGB images of xBD dataset are not included in the OpenEarthMap dataset. Please download the xBD RGB images from https://xview2.org/dataset and add them to the corresponding folders. The "xbd_files.csv" contains information about how to prepare the xBD RGB images and add them to the corresponding folders.
-
-#### Compiling OpenEarthMap dataset
-To compile the full OpenEarthMap, the xBD dataset is needed. Please download both datasets, [OpenEarthMap](https://zenodo.org/record/7223446#.Y2Jj1OzP2Ak) and [xBD](https://xview2.org/download) (the datasets from the xView-2 Challenge, PNG images). Then, run the following command:
-```python
-python data/compile_xbd.py \
-    --path_to_OpenEarthMap "folder where OpenEarthMap is located" \
-    --path_to_xBD "folder where xBD is located"
+### Setup
+```
+docker pull 2btlfe/lbc_open_earth_map
+```
+- 만약 직접 환경 설정을 원할 경우
+```
+pip install -r requirement.txt
 ```
 
-<!-- ### Example <a name="examples"></a> -->
-### Example
-This example shows the application for multi-class semantic segmentation using a small version of the OpenEarthMap dataset. Please, follow the demo [notebook](https://github.com/bao18/open_earth_map/blob/main/Demo.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/bao18/open_earth_map/blob/main/Demo.ipynb)
+### Train (UnetFormer - OpenEarthMap Dataset) 
+- 학습 시킨 pth 파일은 ./model/model.pth를 참고하면 된다
+- img_size(768), # of class(9), lr(0.0001), batch size(8), epoch(10) 으로 학습시킨 결과다 
+``` python 
+bash train.sh
+```
 
-### Leaderboard
-Performance on the test set can be evaluated on the [Codalab webpage](https://codalab.lisn.upsaclay.fr/competitions/9121).
+### Test (with SAM)
+```python
+python test.py --model_name model.pth \
+        --model_dir ./model \
+        --sam_mask \
+        --skku_dir {skku_tile_director}
+```
+
+
+
