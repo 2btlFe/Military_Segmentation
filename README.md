@@ -46,7 +46,7 @@ pip install -r requirement.txt
 ```
 
 ### Train (UnetFormer - OpenEarthMap Dataset) 
-- 학습 시킨 pth 파일은 ./model/model.pth를 참고하면 된다
+- 학습 시킨 pth 파일은 ./model/model.pth를 참고하면 된다 -> vclab@115.145.172.165:/mnt/ssd0/byeongcheol/Remote_Sensing/open_earth_map/model/model.pth 에서 다운로드 받을 수 있다
 - img_size(768), # of class(9), lr(0.0001), batch size(8), epoch(10) 으로 학습시킨 결과다 
 ``` python 
 bash train.sh
