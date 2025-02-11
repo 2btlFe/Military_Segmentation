@@ -54,7 +54,7 @@ bash train.sh
 
 ### Test (with SAM) 
 - skku_dir에 들어갈 이미지들은 vclab@115.145.172.165:/mnt/hdd0/byeongcheol/Remote_Sensing/skku_tiles_40에서 다운로드 할 수 있다
-- 이 모델은 SAM을 필요로 한다. "sam_vit_h_4b8939.pth" 을 다운로드 받아서 사용해야 한다. 이 또한, vclab@115.145.172.165:/mnt/ssd0/byeongcheol/Remote_Sensing/oopen_earth_map/sam_vit_h_4b8939.pth 에서 다운로드 받을 수 있다
+- 이 모델은 SAM을 필요로 한다. "sam_vit_h_4b8939.pth" 을 다운로드 받아서 사용해야 한다. 이 또한, vclab@115.145.172.165:/mnt/ssd0/byeongcheol/Remote_Sensing/open_earth_map/sam_vit_h_4b8939.pth 에서 다운로드 받을 수 있다
 - 다만 현재 세팅에서는 큰 이미지를 미리 crop 시켜서 skku_tiles_40에 모아둔 뒤, 적용하고 있기 때문에 overlapped stride를 적용할 수 있게끔 변경할 필요가 있다.
 - 원본 사진은 vclab@115.145.172.165:/mnt/hdd0/byeongcheol/Remote_Sensing/202403409C02020039.tif 이다.
 ```python
