@@ -36,7 +36,9 @@ from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskG
 from open_earth_map.utils import sam_refinement
 
 # SAM for road extraction 
-# from open_earth_map.networks import SAMRoad
+from sam_road import SAMRoad
+from utils import load_config, create_output_dir_and_save_config
+from inference import infer_one_img
 
 warnings.filterwarnings("ignore")
 
@@ -164,17 +166,36 @@ colors = [
 ]
 
 def img_writer(arguments):
-    fn, prd, fout = arguments
-    with rasterio.open(fn, "r") as src:
-        profile = src.profile
-        prd = cv2.resize(
-            prd,
-            (profile["width"], profile["height"]),
-            interpolation=cv2.INTER_NEAREST,
-        )
-        with rasterio.open(fout, "w", **profile) as dst:
-            for idx in src.indexes:
-                dst.write(prd[:, :, idx - 1], idx)
+    fn, prd, object_map, road_mask, fout, idx = arguments
+    # ipdb.set_trace()
+
+    # road_mask만 출력하기
+    fout_dir = os.path.join(os.path.dirname(fout), 'road')
+    os.makedirs(fout_dir, exist_ok=True)
+    fout_filename = os.path.basename(fout)
+
+    road_fout = os.path.join(fout_dir, fout_filename)
+    cv2.imwrite(road_fout, road_mask*255)
+
+    # prd와 road_mask 합치기
+    road_mask = road_mask // 1
+    difference = road_mask * (1 - object_map)  
+    prd[difference == 1] = [255, 255, 0]
+    
+    rgb_mask = cv2.cvtColor(prd, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(fout, rgb_mask)
+
+    return (idx, prd)
+    # with rasterio.open(fn, "r") as src:
+    #     profile = src.profile
+    #     prd = cv2.resize(
+    #         prd,
+    #         (profile["width"], profile["height"]),
+    #         interpolation=cv2.INTER_NEAREST,
+    #     )
+    #     with rasterio.open(fout, "w", **profile) as dst:
+    #         for idx in src.indexes:
+    #             dst.write(prd[:, :, idx - 1], idx)
 
 if __name__ == "__main__":
     Args = argparse.ArgumentParser()
@@ -186,26 +207,43 @@ if __name__ == "__main__":
     Args.add_argument("--crf", action="store_true")
     Args.add_argument("--fig_dir", type=str, default="skku_predictions")
     Args.add_argument("--sam_mask", action="store_true")
-    Args.add_argument("--config", type=str, default="configs/sam_vit_h_4b8939.yaml")
+    Args.add_argument("--config", type=str, default="config/toponet_vitb_512_cityscale_viz.yaml")
+    Args.add_argument("--checkpoint", type=str, default="/workspace/ssd0/byeongcheol/Remote_Sensing/open_earth_map/cityscale_vitb_512_e10.ckpt")
     args = Args.parse_args()
-    
+
     start_time = time.time()
+    road_sam_time = 0
     sam_time = 0        # SAM mask를 얻는 과정
     masking_time = 0    # SAM결과랑 UnetFormer 결과랑 합치는 과정 
-    
+    segmentation_time = 0
+
     # Load the model
     network = oem.networks.UNetFormer(n_classes=args.n_classes)
     network = oem.utils.load_checkpoint(network, model_name=args.model_name, model_dir=args.model_dir)
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    network.eval().to(DEVICE)
+
+    # 사용 가능한 GPU가 2개 이상일 때만 할당
+    if torch.cuda.device_count() >= 2:
+        DEVICE1 = torch.device("cuda:0")  # 첫 번째 GPU
+        DEVICE2 = torch.device("cuda:1")  # 두 번째 GPU
+    else:
+        DEVICE1 = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        DEVICE2 = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    print(f"DEVICE1: {DEVICE1}")
+    print(f"DEVICE2: {DEVICE2}")    
+    network.eval().to(DEVICE1)
 
     # TODO: Load Road Extraction Model
-    # config = load_config(args.config)
-    # road_network = SAMRoad(config)
-
+    config = load_config(args.config)
+    road_net = SAMRoad(config)
+    checkpoint = torch.load(args.checkpoint, map_location="cpu")
+    road_net.load_state_dict(checkpoint["state_dict"])
+    road_net.eval().to(DEVICE2)
+    
     # Load Test Dataset
     skku_tile=args.skku_dir
-    skku_tile_list = os.listdir(skku_tile)
+    skku_tile_list = sorted(os.listdir(skku_tile))
+    # ipdb.set_trace()
     skku_tile_list = [os.path.join(skku_tile, f) for f in skku_tile_list if f.endswith(".png")]
     test_data = oem.dataset.OpenEarthMapDataset(skku_tile_list, n_classes=args.n_classes, augm=None, testing=True)
     
@@ -215,21 +253,50 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     # os.makedirs(OUTPUT_DIR_SAM, exist_ok=True)
     
-    network.eval().to(DEVICE)
+    network.eval().to(DEVICE1)
     arguments = []
     arguments_sam = []
     
     if args.sam_mask:
         sam_ckpt = "sam_vit_h_4b8939.pth"
-        sam = sam_model_registry["vit_h"](checkpoint=sam_ckpt).to(device=DEVICE).eval()
+        sam = sam_model_registry["vit_h"](checkpoint=sam_ckpt).to(device=DEVICE1).eval()
         mask_generator = SamAutomaticMaskGenerator(sam)
-        
+    
+
+    # device1 print DEVICE1 memory
+    # print(torch.cuda.memory_allocated)
+
+    # device2 print DEVICE2 memory
     for idx, filename in tqdm(enumerate(range(len(test_data))), total=len(test_data)):
         img, fn = test_data[idx][0], test_data[idx][2]
-           
+
+        # SAM_Road Inference
+        start_time =time.time()
         with torch.no_grad():
-            prd = network(img.unsqueeze(0).to(DEVICE)).squeeze(0).cpu()
-        
+            road_mask = infer_one_img(road_net, img.permute(1, 2, 0) * 255.0, config)
+
+            road_mask_max = np.max(road_mask)   #249
+            road_mask_min = np.min(road_mask)   # 0
+            road_mask = (road_mask - road_mask_min) / (road_mask_max - road_mask_min)
+
+            rg = 0.1            
+            # 1) thresholding
+            road_mask[road_mask < rg] = 0
+            road_mask[road_mask >= rg] = 1 
+        road_sam_tmp_time = time.time() - start_time
+        road_sam_time += road_sam_tmp_time
+        print("road_time: ", road_sam_time)
+
+        # UNetFormer Inference    
+        start_time =time.time()
+        with torch.no_grad():
+            prd = network(img.unsqueeze(0).to(DEVICE1)).squeeze(0).cpu() 
+        segmentation_tmp_time = time.time() - start_time
+        segmentation_time += segmentation_tmp_time 
+        print("segementation_time: ", segmentation_tmp_time)
+
+
+
         # SAM mask generation & Majority Voting
         if args.sam_mask:    
             img_np = (img.numpy().transpose((1, 2, 0)) * 255.0).astype(np.uint8)
@@ -247,9 +314,17 @@ if __name__ == "__main__":
             
             #TODO:병렬로 최적화 필요 
             mask_start = time.time()
-            with mp.Pool(processes=mp.cpu_count()) as pool:
-                args_list = [(msk, mask) for msk in sam_masks]
-                results = pool.map(process_single_mask, args_list)  # Majority Voting 적용
+
+            results = []            
+            args_list = [(msk, mask) for msk in sam_masks]
+            for arg in args_list:
+                res = process_single_mask(arg)
+                results.append(res)
+            
+
+            # with mp.Pool(processes=mp.cpu_count()) as pool:
+                # args_list = [(msk, mask) for msk in sam_masks]
+                # results = pool.map(process_single_mask, args_list)  # Majority Voting 적용
 
             for mask_res, binary_mask, mask_cls in results:
                 mask_res_list.append(mask_res)
@@ -269,6 +344,7 @@ if __name__ == "__main__":
 
             # visualize mask
             prd = oem.utils.make_rgb(mask_visual)
+            object_map = ((mask_visual != 0) * (mask_visual != 4)).astype(np.uint8) # 0: background, 4: road
 
             # mask_visual_dir = 'mask_visual'
             # os.makedirs(mask_visual_dir, exist_ok=True)
@@ -305,15 +381,37 @@ if __name__ == "__main__":
             prd = oem.utils.make_rgb(np.argmax(prd.numpy(), axis=0))
 
         fout = os.path.join(OUTPUT_DIR, fn.split("/")[-1])
-        
-        arguments.append((fn, prd, fout))
+
+        # ipdb.set_trace() 
+        arguments.append((fn, prd, object_map, road_mask, fout, idx))
 
     # semantic segmentation
     t0 = time.time()
-    mpp.Pool(processes=mp.cpu_count()).map(img_writer, arguments)
+    # img_writer(arguments[0])
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        prds = pool.map(img_writer, arguments)  # 병렬 처리 후 결과 리스트 반환 
+    
+    # mpp.Pool(processes=mp.cpu_count()).map(img_writer, arguments)
     t1 = time.time()
     img_write_time = t1 - t0
     print('images writing spends: {} s'.format(img_write_time))
     print(f"Total time: {time.time() - start_time:.2f}s")
+    print(f"Road Sam time: {road_sam_time:.2f}s")
+    print(f"Segmentation time: {segmentation_time:.2f}s")
     print(f"Sam mask generation time: {sam_time:.2f}s")
     print(f"Mask processing time: {masking_time:.2f}s")
+
+    #전체 그림 만들기 - prds가 안 된다 
+    ROW = 4
+    COL = 3    
+    total_image = np.zeros((1024 * ROW, 1024 * COL, 3), dtype=np.uint8)
+
+    sorted_prds = sorted(prds, key=lambda x: x[0])
+    for idx in range(len(arguments)):
+        row = idx // COL
+        col = idx % COL
+        assert sorted_prds[idx][0] == idx
+        total_image[row*1024:(row+1)*1024, col*1024:(col+1)*1024, :] = sorted_prds[idx][1]
+
+    total_image = cv2.cvtColor(total_image, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(os.path.join(OUTPUT_DIR, 'total_image.png'), total_image)

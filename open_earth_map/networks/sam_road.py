@@ -58,6 +58,7 @@ def get_batch_img_patches(img, batch_patch_info):
 
 def infer_one_img(net, img, config):
     # TODO(congrui): centralize these configs
+    ipdb.set_trace()
     image_size = img.shape[0]
 
     batch_size = config.INFER_BATCH_SIZE
