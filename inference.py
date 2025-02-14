@@ -68,7 +68,7 @@ def infer_one_img(net, img, config):
     # stores img embeddings for toponet
     # list of [B, D, h, w], len=batch_num
     # img_features = list()
-
+    # ipdb.set_trace()
     for batch_index in range(batch_num):
         start_time = time.time()
         offset = batch_index * batch_size

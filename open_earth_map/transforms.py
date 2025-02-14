@@ -15,6 +15,15 @@ class ToTensor:
         return sample
 
 
+class ToTensorSAM:
+    def __init__(self, classes):
+        self.classes = classes
+
+    def __call__(self, sample):
+        sample["image"] = TF.to_tensor(sample["image"])
+        return sample
+
+
 class Rotate:
     def __init__(self, degrees=(-180, 180)):
         self.degrees = degrees

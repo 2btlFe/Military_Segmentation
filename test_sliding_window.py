@@ -48,22 +48,27 @@ warnings.filterwarnings("ignore")
 
 # 마스크 하나에 대해 majority voting하기 
 def process_single_mask(args):
-                msk, mask = args
-                binary_mask = msk['segmentation']
-                mask_res = np.zeros_like(binary_mask)
-                mask_extracted = mask[binary_mask]
+    # ipdb.set_trace()
+    msk, mask = args
+    binary_mask = msk['segmentation']
+    mask_res = np.zeros_like(binary_mask)
+    
+    try:
+        mask_extracted = mask[binary_mask]
+    except:
+        ipdb.set_trace()
 
-                # 아예 background인 경우 그냥 background로 처리
-                if (mask_extracted != 0).sum() == 0:
-                    return mask_res, binary_mask, 0
+    # 아예 background인 경우 그냥 background로 처리
+    if (mask_extracted != 0).sum() == 0:
+        return mask_res, binary_mask, 0
 
-                mask_extracted = mask_extracted[mask_extracted != 0]
-                mask_cls = np.bincount(mask_extracted.flatten()).argmax()
+    mask_extracted = mask_extracted[mask_extracted != 0]
+    mask_cls = np.bincount(mask_extracted.flatten()).argmax()
 
-                # background제거 하고 majority voting하기
-                mask_res[binary_mask] = mask_cls
-                
-                return mask_res, binary_mask, mask_cls
+    # background제거 하고 majority voting하기
+    mask_res[binary_mask] = mask_cls
+    
+    return mask_res, binary_mask, mask_cls
 
 # Colors for Instance Visualization
 colors = [
@@ -214,7 +219,7 @@ if __name__ == "__main__":
     Args.add_argument("--config", type=str, default="config/toponet_vitb_512_cityscale_viz.yaml")
     Args.add_argument("--checkpoint", type=str, default="/workspace/ssd0/byeongcheol/Remote_Sensing/open_earth_map/cityscale_vitb_512_e10.ckpt")
     Args.add_argument("--sam_ckpt", type=str, default="sam_vit_h_4b8939.pth")
-    Args.add_argument("--patch_size", type=int, default=1024)
+    Args.add_argument("--patch_size", type=int, default=512)
     args = Args.parse_args()
 
     start_time = time.time()
@@ -250,10 +255,10 @@ if __name__ == "__main__":
     skku_imgs_dir = args.skku_dir
     skku_tile_list = sorted(os.listdir(skku_imgs_dir))
     # ipdb.set_trace()
-    skku_tile_list = [os.path.join(skku_imgs_dir, f) for f in skku_tile_list if f.endswith(".png")]
-    # skku_tile_list = [os.path.join(skku_imgs_dir, f) for f in skku_tile_list if f.endswith(".tif")]
-    # test_data = oem.dataset.SKKUDataset(skku_tile_list, n_classes=args.n_classes, augm=None, testing=True)     
-    test_data = oem.dataset.OpenEarthMapDataset(skku_tile_list, n_classes=args.n_classes, augm=None, testing=True)     
+    # skku_tile_list = [os.path.join(skku_imgs_dir, f) for f in skku_tile_list if f.endswith(".png")]
+    skku_tile_list = [os.path.join(skku_imgs_dir, f) for f in skku_tile_list if f.endswith(".tif")]
+    test_data = oem.dataset.SKKUDataset(skku_tile_list, n_classes=args.n_classes, augm=None, testing=True, patch_size=args.patch_size)     
+    # test_data = oem.dataset.OpenEarthMapDataset(skku_tile_list, n_classes=args.n_classes, augm=None, testing=True)     
     
     # Output Directory
     OUTPUT_DIR=f"{args.model_dir}/{args.fig_dir}"
@@ -272,113 +277,161 @@ if __name__ == "__main__":
     # ipdb.set_trace()
     # device2 print DEVICE2 memory
     for idx, filename in tqdm(enumerate(range(len(test_data))), total=len(test_data)):
-        img_ori, _, fn = test_data[idx]
+        img_ori, fn = test_data[idx]
         
         # ipdb.set_trace()
-        img = img_ori
 
-        # res_img = torch.zeros(img_ori.shape[1:3], dtype=torch.float32).to(device=DEVICE1, non_blocking=False)
-        # pixel_counter = torch.zeros(img_ori.shape[1:3], dtype=torch.float32).to(device=DEVICE1, non_blocking=False)
+        # num patch of each edge
+        ori_height = img_ori.shape[1]
+        ori_width = img_ori.shape[2]
+        patch_size = args.patch_size
+
+        num_crop_height = ori_height // patch_size
+        num_crop_width = ori_width // patch_size
+
+        num_patch_of_height = num_crop_height * 2 - 1
+        num_patch_of_width = num_crop_width * 2 - 1
+
+        # ipdb.set_trace()
+
+        res_img = torch.zeros((args.n_classes, ori_height, ori_width), dtype=torch.float32, device=DEVICE1)
+        res_road_mask = np.zeros((ori_height, ori_width), dtype=np.float32)
+        pixel_counter = torch.zeros(img_ori.shape[1:3], dtype=torch.float32, device=DEVICE1)
 
         # sliding window patch 설정하기------------------------------------------------ 
-        # patch_info = []
-        # sample_min = 0
-        # patch_size = args.patch_size
-        # sample_height_max = img_ori.shape[1] - (patch_size + sample_min)
-        # sample_width_max = img_ori.shape[2] - (patch_size + sample_min)
+        patch_info = []
+        sample_min = 0
+        sample_height_max = img_ori.shape[1] - (patch_size + sample_min)
+        sample_width_max = img_ori.shape[2] - (patch_size + sample_min)
 
-        # eval_height_samples = np.linspace(start=sample_min, stop=sample_height_max, num=5)
-        # eval_width_samples = np.linspace(start=sample_min, stop=sample_width_max, num=7)
+        eval_height_samples = np.linspace(start=sample_min, stop=sample_height_max, num=num_patch_of_height)
+        eval_width_samples = np.linspace(start=sample_min, stop=sample_width_max, num=num_patch_of_width)
 
-        # eval_height_samples = [round(x) for x in eval_height_samples]
-        # eval_width_samples = [round(x) for x in eval_width_samples]
+        eval_height_samples = [round(x) for x in eval_height_samples]
+        eval_width_samples = [round(x) for x in eval_width_samples]
 
-        # for y in eval_height_samples:
-        #     for x in eval_width_samples: 
-        #         x0, y0 = x, y
-        #         x1, y1 = x + patch_size, y + patch_size
-        #         img = img_ori[:, y0:y1, x0:x1] 
+        for y in tqdm(eval_height_samples, desc="Height", total=len(eval_height_samples)):
+            for x in tqdm(eval_width_samples, desc="Width", leave=False, total=len(eval_width_samples)): 
+                x0, y0 = x, y
+                x1, y1 = x + patch_size, y + patch_size
+                img = img_ori[:, y0:y1, x0:x1] 
 
-        # 1. SAM_Road Inference
-        start_time =time.time()
-        with torch.no_grad():
-            road_mask = infer_one_img(road_net, img.permute(1, 2, 0) * 255.0, config)
+                # ipdb.set_trace()
+                # 1. SAM_Road Inference
+                start_time =time.time()
+                with torch.no_grad():
+                    road_mask = infer_one_img(road_net, img.permute(1, 2, 0) * 255.0, config)
+                    # ipdb.set_trace()
+                    cv2.imwrite(f"{OUTPUT_DIR}/road/road_mask_{y}_{x}.png", road_mask)
 
-            road_mask_max = np.max(road_mask)   #249
-            road_mask_min = np.min(road_mask)   # 0
-            road_mask = (road_mask - road_mask_min) / (road_mask_max - road_mask_min)
+                    res_road_mask[y0:y1, x0:x1] = road_mask
 
-            rg = 0.1            
-            # 1) thresholding
-            road_mask[road_mask < rg] = 0
-            road_mask[road_mask >= rg] = 1 
-        road_sam_tmp_time = time.time() - start_time
-        road_sam_time += road_sam_tmp_time
-        print("road_time: ", road_sam_time)
+                road_sam_tmp_time = time.time() - start_time
+                road_sam_time += road_sam_tmp_time
+                print("road_time: ", road_sam_time)
 
-        # 2. UNetFormer Inference    
-        start_time =time.time()
-        with torch.no_grad():
-            prd = network(img.unsqueeze(0).to(DEVICE1)).squeeze(0).cpu() 
-        segmentation_tmp_time = time.time() - start_time
-        segmentation_time += segmentation_tmp_time 
-        print("segementation_time: ", segmentation_tmp_time)
+                # 2. UNetFormer Inference    
+                start_time =time.time()
+                with torch.no_grad():
+                    prd = network(img.unsqueeze(0).to(DEVICE1)).squeeze(0)
+                segmentation_tmp_time = time.time() - start_time
+                segmentation_time += segmentation_tmp_time 
+                print("segementation_time: ", segmentation_tmp_time)
 
-        # 3. SAM mask generation & Majority Voting
-        if args.sam_mask:    
-            img_np = (img.numpy().transpose((1, 2, 0)) * 255.0).astype(np.uint8)
-            
-            sam_start = time.time()
-            sam_masks = mask_generator.generate(img_np)    # 입력 텐서 
-            sam_end = time.time()
-            sam_tmp_time = sam_end - sam_start
-            print(f"Sam mask generation time: {sam_tmp_time:.2f}s")
-            sam_time += sam_tmp_time
+                # 중간 출력
+                seg_inter_rgb = np.argmax(prd.cpu().numpy(), axis=0)
+                seg_inter_rgb = oem.utils.make_rgb(seg_inter_rgb)
+                seg_inter_bgr = cv2.cvtColor(seg_inter_rgb, cv2.COLOR_RGB2BGR)
+                os.makedirs("seg_inter", exist_ok=True)
+                cv2.imwrite(f"seg_inter/seg_inter_{y}_{x}.png", seg_inter_bgr)
 
-            mask = np.argmax(prd.numpy(), axis=0)
-            mask_visual = np.zeros_like(mask)
-            mask_res_list = [] 
-            
-            #TODO:병렬로 최적화 필요 
-            mask_start = time.time()
-
-            results = []            
-            args_list = [(msk, mask) for msk in sam_masks]
-            for arg in args_list:
-                res = process_single_mask(arg)
-                results.append(res)
-            
-            for mask_res, binary_mask, mask_cls in results:
-                mask_res_list.append(mask_res)
-                mask_visual[binary_mask] = mask_cls
-            mask_end = time.time()
-            mask_tmp_time = mask_end - mask_start
-            print(f"Mask processing time: {mask_end - mask_start:.2f}s")
-            masking_time += mask_tmp_time
+                res_img[:, y0:y1, x0:x1] += prd
+                pixel_counter[y0:y1, x0:x1] += torch.ones(prd.shape[1:3], dtype=torch.float32, device=DEVICE1)
+ 
+        prd = (res_img / pixel_counter).cpu().numpy()
+        res_road_mask = (res_road_mask / pixel_counter.cpu().numpy())
         
-            # visualize mask
-            prd = oem.utils.make_rgb(mask_visual)
-            object_map = ((mask_visual != 0) * (mask_visual != 4)).astype(np.uint8) # 0: background, 4: road
+        res_road_mask_max = np.max(res_road_mask)   
+        res_road_mask_min = np.min(res_road_mask)
+        res_road_mask = (res_road_mask - res_road_mask_min) / (res_road_mask_max - res_road_mask_min)
 
-                # 4. Combine the results
-                # res_img[y0:y1, x0:x1] += prd
-                # pixel_counter[y0:y1, x0:x1] += torch.ones(prd.shape[1:3], dtype=torch.float32, device=DEVICE1)
-
-        # prd = res_img / pixel_counter
+        rg = 0.1
+        # 1) thresholding
+        res_road_mask[res_road_mask < rg] = 0
+        res_road_mask[res_road_mask >= rg] = 1        
         fout = os.path.join(OUTPUT_DIR, fn.split("/")[-1])
 
-        # ipdb.set_trace() 
-        # img_writer(fn, prd, object_map, road_mask, fout, idx)
+        prd_rgb = np.zeros((prd.shape[1], prd.shape[2], 3), dtype=np.uint8)
+        res_object_map = np.zeros((prd.shape[1], prd.shape[2]), dtype=np.uint8)
         
-        arguments.append((fn, prd, object_map, road_mask, fout, idx))
+        # segmentation 결과 출력
+        seg_rgb = np.argmax(prd, axis=0)
+        seg_rgb = oem.utils.make_rgb(seg_rgb)
+        seg_bgr = cv2.cvtColor(seg_rgb, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(fout.replace(".tif", "_seg.png"), seg_bgr)        
+        cv2.imwrite(fout.replace(".tif", "_road.png"), res_road_mask*255)
+        
+        #TODO: SAM Mask majority voting 수정
+        # SAM Mask majority voting
+        # 3. SAM mask generation & Majority Voting
+        crop_size = patch_size
+        
+
+        for h_idx in tqdm(range(num_crop_height), desc="Height", total=num_crop_height):
+            for w_idx in tqdm(range(num_crop_width), desc="Width", leave=False, total=num_crop_width):
+                y0 = h_idx * crop_size
+                y1 = (h_idx + 1) * crop_size
+                x0 = w_idx * crop_size
+                x1 = (w_idx + 1) * crop_size
+
+                img = img_ori[:, y0:y1, x0:x1]
+                img_np = (img.numpy().transpose((1, 2, 0)) * 255.0).astype(np.uint8)
+                
+                sam_start = time.time()
+                sam_masks = mask_generator.generate(img_np)    # 입력 텐서 
+                sam_end = time.time()
+                sam_tmp_time = sam_end - sam_start
+                print(f"Sam mask generation time: {sam_tmp_time:.2f}s")
+                sam_time += sam_tmp_time
+
+                mask = np.argmax(prd[:, y0:y1, x0:x1], axis=0)
+                mask_visual = np.zeros_like(mask)
+                mask_res_list = [] 
+                
+                #TODO:병렬로 최적화 필요 
+                mask_start = time.time()
+                
+                ipdb.set_trace()
+
+                results = []        
+                args_list = [(msk, mask) for msk in sam_masks]
+                for arg in args_list:
+                    res = process_single_mask(arg)
+                    results.append(res)
+                
+                for mask_res, binary_mask, mask_cls in results:
+                    mask_res_list.append(mask_res)
+                    mask_visual[binary_mask] = mask_cls
+                mask_end = time.time()
+                mask_tmp_time = mask_end - mask_start
+                print(f"Mask processing time: {mask_end - mask_start:.2f}s")
+                masking_time += mask_tmp_time
+            
+                # visualize mask
+                prd_rgb[y0:y1, x0:x1] = oem.utils.make_rgb(mask_visual)
+                object_map = ((mask_visual != 0) * (mask_visual != 4)).astype(np.uint8) # 0: background, 4: road
+                res_object_map[y0:y1, x0:x1] = object_map
+
+                prd_bgr = cv2.cvtColor(prd_rgb, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(fout.replace(".tif", f"_sam_{y0}_{x0}.png"), prd_bgr)
+
+        arguments.append((fn, prd_rgb, res_object_map, res_road_mask, fout, idx))
 
     # semantic segmentation
     t0 = time.time()
-    # img_writer(arguments[0])
     with mp.Pool(processes=mp.cpu_count()) as pool:
         prds = pool.map(img_writer, arguments)  # 병렬 처리 후 결과 리스트 반환 
     
-    # mpp.Pool(processes=mp.cpu_count()).map(img_writer, arguments)
     t1 = time.time()
     img_write_time = t1 - t0
     print('images writing spends: {} s'.format(img_write_time))
@@ -388,18 +441,4 @@ if __name__ == "__main__":
     print(f"Sam mask generation time: {sam_time:.2f}s")
     print(f"Mask processing time: {masking_time:.2f}s")
 
-    #전체 그림 만들기 - prds가 안 된다 
-    height, width = 512, 512
-    ROW = 10
-    COL = 7
-    total_image = np.zeros((height * ROW, width * COL, 3), dtype=np.uint8)
 
-    sorted_prds = sorted(prds, key=lambda x: x[0])
-    for idx in range(len(arguments)):
-        row = idx // COL
-        col = idx % COL
-        assert sorted_prds[idx][0] == idx
-        total_image[row*height:(row+1)*height, col*width:(col+1)*width, :] = sorted_prds[idx][1]
-
-    total_image = cv2.cvtColor(total_image, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(os.path.join(OUTPUT_DIR, 'total_image.png'), total_image)
