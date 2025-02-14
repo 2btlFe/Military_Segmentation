@@ -45,6 +45,8 @@ def infer_one_img(net, img, config):
     # ipdb.set_trace()
     image_size = img.shape[0]
 
+    # ipdb.set_trace()
+
     batch_size = config.INFER_BATCH_SIZE    # batch 하나가 적용할 샘플의 개수 (64) 512 / 64 = 16 batches  
     # list of (i, (x_begin, y_begin), (x_end, y_end))
     all_patch_info = get_patch_info_one_img(
