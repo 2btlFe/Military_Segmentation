@@ -217,7 +217,7 @@ if __name__ == "__main__":
     Args.add_argument("--patch_size", type=int, default=1024)
     args = Args.parse_args()
 
-    start_time = time.time()
+    total_start_time = time.time()
     road_sam_time = 0
     sam_time = 0        # SAM mask를 얻는 과정
     masking_time = 0    # SAM결과랑 UnetFormer 결과랑 합치는 과정 
@@ -350,6 +350,8 @@ if __name__ == "__main__":
             
             for mask_res, binary_mask, mask_cls in results:
                 mask_res_list.append(mask_res)
+                if mask_cls == 4:
+                    continue
                 mask_visual[binary_mask] = mask_cls
             mask_end = time.time()
             mask_tmp_time = mask_end - mask_start
@@ -382,7 +384,7 @@ if __name__ == "__main__":
     t1 = time.time()
     img_write_time = t1 - t0
     print('images writing spends: {} s'.format(img_write_time))
-    print(f"Total time: {time.time() - start_time:.2f}s")
+    print(f"Total time: {time.time() - total_start_time:.2f}s")
     print(f"Road Sam time: {road_sam_time:.2f}s")
     print(f"Segmentation time: {segmentation_time:.2f}s")
     print(f"Sam mask generation time: {sam_time:.2f}s")
