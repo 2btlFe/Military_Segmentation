@@ -6,7 +6,6 @@ import cv2
 from skimage import measure
 from torchvision.ops import masks_to_boxes
 import ipdb
-
 class_rgb_oem = {
     "unknown": [0, 0, 0],
     "Bareland": [128, 0, 0],

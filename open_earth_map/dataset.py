@@ -71,6 +71,44 @@ class OpenEarthMapDataset(torch.utils.data.Dataset):
 
 
 
+# class SKKUDataset(torch.utils.data.Dataset):
+
+#     """
+#     OpenEarthMap dataset
+
+#     Args:
+#         fn_list (str): List containing image names
+#         classes (int): list of of class-code
+#         augm (Classes): transfromation pipeline (e.g. Rotate, Crop, etc.)
+#     """
+
+#     def __init__(self, imgs, n_classes: int = 9, testing=False, augm=None, patch_size=512):
+#         self.fn_imgs = imgs
+#         self.augm = augm
+#         self.testing = testing
+#         self.classes = np.arange(n_classes).tolist()
+#         self.to_tensor = transforms.ToTensorSAM(classes=self.classes)
+#         self.patch_size = patch_size
+#         self.load_multiband = load_multiband
+
+#     def __getitem__(self, idx):
+        
+#         img = Image.fromarray(self.load_multiband(self.fn_imgs[idx]))
+#         width, height = img.size
+
+#         # DownSampling 4 times
+#         new_height = (height + self.patch_size - height % self.patch_size) // 4
+#         new_width = (width + self.patch_size - width % self.patch_size) // 4
+#         img = img.resize((new_width, new_height), resample=Image.BICUBIC)
+#         data = self.to_tensor({"image": img})
+        
+#         return data["image"], self.fn_imgs[idx]
+
+#     def __len__(self):
+#         return len(self.fn_imgs)
+
+
+
 class SKKUDataset(torch.utils.data.Dataset):
 
     """
@@ -82,7 +120,7 @@ class SKKUDataset(torch.utils.data.Dataset):
         augm (Classes): transfromation pipeline (e.g. Rotate, Crop, etc.)
     """
 
-    def __init__(self, imgs, n_classes: int = 9, testing=False, augm=None, patch_size=512):
+    def __init__(self, imgs, n_classes: int = 9, testing=False, augm=None, patch_size=512, downsample=4):
         self.fn_imgs = imgs
         self.augm = augm
         self.testing = testing
@@ -90,6 +128,7 @@ class SKKUDataset(torch.utils.data.Dataset):
         self.to_tensor = transforms.ToTensorSAM(classes=self.classes)
         self.patch_size = patch_size
         self.load_multiband = load_multiband
+        self.downsample = downsample
 
     def __getitem__(self, idx):
         
@@ -97,8 +136,8 @@ class SKKUDataset(torch.utils.data.Dataset):
         width, height = img.size
 
         # DownSampling 4 times
-        new_height = (height + self.patch_size - height % self.patch_size) // 4
-        new_width = (width + self.patch_size - width % self.patch_size) // 4
+        new_height = (height + self.patch_size - height % self.patch_size) // self.downsample
+        new_width = (width + self.patch_size - width % self.patch_size) // self.downsample
         img = img.resize((new_width, new_height), resample=Image.BICUBIC)
         data = self.to_tensor({"image": img})
         
@@ -106,5 +145,4 @@ class SKKUDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.fn_imgs)
-
 

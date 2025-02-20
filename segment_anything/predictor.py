@@ -12,7 +12,7 @@ from segment_anything.modeling import Sam
 from typing import Optional, Tuple
 
 from .utils.transforms import ResizeLongestSide
-
+import ipdb
 
 class SamPredictor:
     def __init__(
@@ -28,7 +28,7 @@ class SamPredictor:
         """
         super().__init__()
         self.model = sam_model
-        self.transform = ResizeLongestSide(sam_model.image_encoder.img_size)
+        self.transform = ResizeLongestSide(sam_model.image_encoder.img_size) #1024로 고정
         self.reset_image()
 
     def set_image(
@@ -52,10 +52,11 @@ class SamPredictor:
         if image_format != self.model.image_format:
             image = image[..., ::-1]
 
+        # ipdb.set_trace()
         # Transform the image to the form expected by the model
-        input_image = self.transform.apply_image(image)
+        input_image = self.transform.apply_image(image) # 1024로 고정
         input_image_torch = torch.as_tensor(input_image, device=self.device)
-        input_image_torch = input_image_torch.permute(2, 0, 1).contiguous()[None, :, :, :]
+        input_image_torch = input_image_torch.permute(2, 0, 1).contiguous()[None, :, :, :]  # [1, 3, H, W]
 
         self.set_torch_image(input_image_torch, image.shape[:2])
 

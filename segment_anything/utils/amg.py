@@ -11,7 +11,7 @@ import math
 from copy import deepcopy
 from itertools import product
 from typing import Any, Dict, Generator, ItemsView, List, Tuple
-
+import ipdb
 
 class MaskData:
     """
@@ -191,6 +191,7 @@ def build_all_layer_point_grids(
 ) -> List[np.ndarray]:
     """Generates point grids for all crop layers."""
     points_by_layer = []
+    # ipdb.set_trace()
     for i in range(n_layers + 1):
         n_points = int(n_per_side / (scale_per_layer**i))
         points_by_layer.append(build_point_grid(n_points))
@@ -215,6 +216,8 @@ def generate_crop_boxes(
     def crop_len(orig_len, n_crops, overlap):
         return int(math.ceil((overlap * (n_crops - 1) + orig_len) / n_crops))
 
+
+    # ipdb.set_trace()
     for i_layer in range(n_layers):
         n_crops_per_side = 2 ** (i_layer + 1)
         overlap = int(overlap_ratio * short_side * (2 / n_crops_per_side))
@@ -231,6 +234,7 @@ def generate_crop_boxes(
             crop_boxes.append(box)
             layer_idxs.append(i_layer + 1)
 
+    # ipdb.set_trace()
     return crop_boxes, layer_idxs
 
 

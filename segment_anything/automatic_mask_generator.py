@@ -30,6 +30,7 @@ from .utils.amg import (
     uncrop_masks,
     uncrop_points,
 )
+import ipdb
 
 
 class SamAutomaticMaskGenerator:
@@ -195,18 +196,28 @@ class SamAutomaticMaskGenerator:
         return curr_anns
 
     def _generate_masks(self, image: np.ndarray) -> MaskData:
+        # ipdb.set_trace()
         orig_size = image.shape[:2]
         crop_boxes, layer_idxs = generate_crop_boxes(
             orig_size, self.crop_n_layers, self.crop_overlap_ratio
         )
 
+        # GPU memory: 3.9GB
+
         # Iterate over image crops
         data = MaskData()
+        # ipdb.set_trace()
         for crop_box, layer_idx in zip(crop_boxes, layer_idxs):
+            
+            # 제일 큰 거는 넘기기 적용해보자 -> memory가 확 줄어든다 (layer 3일 때, 9.9GB 밖에 안 쓴다)
+            if layer_idx == 0:
+                continue
+
             crop_data = self._process_crop(image, crop_box, layer_idx, orig_size)
             data.cat(crop_data)
 
         # Remove duplicate masks between crops
+        # ipdb.set_trace()
         if len(crop_boxes) > 1:
             # Prefer masks from smaller crops
             scores = 1 / box_area(data["crop_boxes"])
@@ -235,14 +246,27 @@ class SamAutomaticMaskGenerator:
         cropped_im_size = cropped_im.shape[:2]
         self.predictor.set_image(cropped_im)
 
-        # Get points for this crop
+        # GPU memory: 8.3GB
+
+        # Get points for this crop 
         points_scale = np.array(cropped_im_size)[None, ::-1]
+        
+        # TODO: point 개수가 고정인가? -> 32 * 32 = 1024
         points_for_image = self.point_grids[crop_layer_idx] * points_scale
 
         # Generate masks for this crop in batches
         data = MaskData()
-        for (points,) in batch_iterator(self.points_per_batch, points_for_image):
+        # cnt = 0
+        for (points,) in batch_iterator(self.points_per_batch, points_for_image):   # points_for_image: 1024개
+            # self.points_per_batch: 64
+            # points: 1024개 중 64개씩 묶어서 16번 반복
+            # batch_data가 계속 늘어나서 터져 버린다            
+            
+            # print(cnt)
+            # cnt += 1
+
             batch_data = self._process_batch(points, cropped_im_size, crop_box, orig_size)
+            # 배치 하나 돌렸는데 21GB나 메모리 용량이 예약됨 (GPU)
             data.cat(batch_data)
             del batch_data
         self.predictor.reset_image()
@@ -272,8 +296,15 @@ class SamAutomaticMaskGenerator:
     ) -> MaskData:
         orig_h, orig_w = orig_size
 
+        # ipdb.set_trace()
+        '''
+        points가 64개 (batch당 64개의 points 적용)
+        '''        
+
         # Run model on this batch
         transformed_points = self.predictor.transform.apply_coords(points, im_size)
+        # [1024, 1024]로 변형했을 때 결과
+
         in_points = torch.as_tensor(transformed_points, device=self.predictor.device)
         in_labels = torch.ones(in_points.shape[0], dtype=torch.int, device=in_points.device)
         masks, iou_preds, _ = self.predictor.predict_torch(
